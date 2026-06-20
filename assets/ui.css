@@ -136,3 +136,70 @@ html, body, [class*="css"] {
   .hero h1{font-size:22px}
 }
 
+/* =====================================================================
+   Sidebar navigation — visual sections only (presentation layer).
+   This purely re-groups the existing radio options into visual sections
+   with headers and spacing. No navigation logic, page names, keys,
+   routing or selection behaviour are changed (CSS-only).
+
+   DOM order of the "Navigate" radio options:
+     1 Overview  2 EDA  3 Bivariate  4 Multivariate  5 Claims
+     6 Providers 7 Query Outputs  8 Data  9 Actions
+
+   Visual sections / order produced below:
+     📋 General         -> Overview, Actions
+     📊 Analytics       -> EDA, Bivariate, Multivariate
+     ⚙️ Operations      -> Claims, Providers, Query Outputs
+     🗄️ Data Management -> Data
+   ===================================================================== */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]{
+  display:flex;
+  flex-direction:column;
+}
+
+/* Re-order options into the grouped visual order (visual only) */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1){order:1} /* Overview */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(9){order:2} /* Actions */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2){order:3} /* EDA */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(3){order:4} /* Bivariate */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(4){order:5} /* Multivariate */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5){order:6} /* Claims */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(6){order:7} /* Providers */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(7){order:8} /* Query Outputs */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8){order:9} /* Data */
+
+/* Let a full-width header line sit above each option's radio row */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label{
+  flex-wrap:wrap;
+}
+
+/* Section headers (rendered above the first option of each section) */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1)::before,
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)::before,
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)::before,
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)::before{
+  flex:0 0 100%;
+  width:100%;
+  display:block;
+  font-family:'Poppins',sans-serif;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--text-muted);
+  padding:4px 2px 6px;
+  margin-bottom:6px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1)::before{content:"📋  General"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)::before{content:"📊  Analytics"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)::before{content:"⚙️  Operations"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)::before{content:"🗄️  Data Management"}
+
+/* Spacing above each new section (every section except the first) */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2),
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5),
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8){
+  margin-top:18px;
+}
+
