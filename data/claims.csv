@@ -1,0 +1,4 @@
+Claim_ID,Food_ID,Receiver_ID,Status,Timestamp
+1001,101,1,Completed,2026-06-15 10:00:00
+1002,102,3,Pending,2026-06-15 11:00:00
+1003,103,2,Completed,2026-06-14 09:30:00

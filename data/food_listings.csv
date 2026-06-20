@@ -1,0 +1,5 @@
+Food_ID,Food_Name,Quantity,Expiry_Date,Provider_ID,Provider_Type,Location,Food_Type,Meal_Type
+101,Pasta,10,2026-06-20,1,Restaurant,Metropolis,Vegetarian,Lunch
+102,Sandwiches,5,2026-06-16,3,Restaurant,Metropolis,Non-Vegetarian,Snacks
+103,Salad,8,2026-06-18,2,Grocery,Gotham,Vegan,Dinner
+104,Leftover Pizza,12,2026-06-17,1,Restaurant,Metropolis,Non-Vegetarian,Dinner
