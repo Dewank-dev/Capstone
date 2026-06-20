@@ -880,6 +880,38 @@ def close_modal():
     st.session_state['modal_action'] = None
 
 
+def _next_numeric_id(df, col):
+    """Suggest the next integer ID for a table (max existing + 1)."""
+    try:
+        if df is not None and col in df.columns and len(df) > 0:
+            mx = pd.to_numeric(df[col], errors='coerce').max()
+            if pd.notna(mx):
+                return int(mx) + 1
+    except Exception:
+        pass
+    return 1
+
+
+def _select_options(df, id_col, label_cols):
+    """Build (labels, ids) for a selectbox that shows human-readable names."""
+    labels, ids = [], []
+    if df is not None and id_col in df.columns:
+        for _, r in df.iterrows():
+            parts = [str(r.get(c)) for c in label_cols
+                     if c in df.columns and pd.notna(r.get(c)) and str(r.get(c)).strip()]
+            name = ' · '.join(parts) if parts else f'ID {r.get(id_col)}'
+            labels.append(f'{name}  (#{r.get(id_col)})')
+            ids.append(str(r.get(id_col)))
+    return labels, ids
+
+
+def _distinct_values(df, col):
+    """Sorted distinct non-empty values of a column, for friendly dropdowns."""
+    if df is not None and col in df.columns:
+        return sorted({str(v) for v in df[col].dropna() if str(v).strip()})
+    return []
+
+
 def render_action_modal(providers, receivers, food, claims):
     if not st.session_state.get('modal_open'):
         return
@@ -894,30 +926,41 @@ def render_action_modal(providers, receivers, food, claims):
             # Build forms per entity/action
             if entity == 'Food':
                 if action == 'Add':
-                    fid = st.text_input('Food_ID')
-                    fname = st.text_input('Food_Name')
-                    pid = st.text_input('Provider_ID')
+                    new_fid = _next_numeric_id(food, 'Food_ID')
+                    st.caption(f'New Food ID will be assigned automatically: #{new_fid}')
+                    fname = st.text_input('Food name')
+                    prov_labels, prov_ids = _select_options(providers, 'Provider_ID', ['ProviderName', 'City'])
+                    prov_choice = st.selectbox('Provider', options=[''] + prov_labels)
                     qty = st.number_input('Quantity', min_value=0, value=1)
                     city = st.text_input('City')
-                    expiry = st.text_input('Expiry_Date (YYYY-MM-DD)')
+                    food_types = _distinct_values(food, 'Food_Type')
+                    meal_types = _distinct_values(food, 'Meal_Type')
+                    ftype = st.selectbox('Food type', options=food_types) if food_types else st.text_input('Food type')
+                    mtype = st.selectbox('Meal type', options=meal_types) if meal_types else st.text_input('Meal type')
+                    expiry = st.date_input('Expiry date')
                     submit = st.form_submit_button('Insert')
                     if submit:
                         errors = []
-                        if not fid:
-                            errors.append('Food_ID required')
-                        if not pid:
-                            errors.append('Provider_ID required')
+                        if not fname:
+                            errors.append('Food name is required')
+                        if not prov_choice:
+                            errors.append('Please choose a Provider')
                         if errors:
                             for e in errors:
                                 st.error(e)
                         else:
+                            pid = prov_ids[prov_labels.index(prov_choice)]
                             conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
-                            rec = {'Food_ID': fid, 'Food_Name': fname, 'Provider_ID': pid, 'Quantity': qty, 'City': city}
+                            rec = {'Food_ID': new_fid, 'Food_Name': fname, 'Provider_ID': pid, 'Quantity': qty, 'Location': city}
+                            if ftype:
+                                rec['Food_Type'] = ftype
+                            if mtype:
+                                rec['Meal_Type'] = mtype
                             if expiry:
-                                rec['Expiry_Date'] = expiry
+                                rec['Expiry_Date'] = str(expiry)
                             ok, msg = insert_record(conn, table_map.get('food','food_listings'), rec)
                             if ok:
-                                st.success('Inserted')
+                                st.success(f'Food listing added (#{new_fid})')
                             else:
                                 st.error(msg)
                             try:
@@ -994,26 +1037,32 @@ def render_action_modal(providers, receivers, food, claims):
 
             elif entity == 'Claims':
                 if action == 'Add':
-                    fid = st.text_input('Food_ID')
-                    rid = st.text_input('Receiver_ID')
+                    new_cid = _next_numeric_id(claims, 'Claim_ID')
+                    st.caption(f'New Claim ID will be assigned automatically: #{new_cid}')
+                    food_labels, food_ids = _select_options(food, 'Food_ID', ['Food_Name', 'City'])
+                    recv_labels, recv_ids = _select_options(receivers, 'Receiver_ID', ['Name', 'City'])
+                    food_choice = st.selectbox('Food listing', options=[''] + food_labels)
+                    recv_choice = st.selectbox('Receiver', options=[''] + recv_labels)
                     status = st.selectbox('Status', options=['pending','completed','claimed','cancelled'])
-                    ts = st.text_input('Timestamp (YYYY-MM-DD HH:MM:SS)')
                     submit = st.form_submit_button('Create')
                     if submit:
                         errors = []
-                        if not fid or not rid:
-                            errors.append('Food_ID and Receiver_ID required')
+                        if not food_choice:
+                            errors.append('Please choose a Food listing')
+                        if not recv_choice:
+                            errors.append('Please choose a Receiver')
                         if errors:
                             for e in errors:
                                 st.error(e)
                         else:
+                            fid = food_ids[food_labels.index(food_choice)]
+                            rid = recv_ids[recv_labels.index(recv_choice)]
                             conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
-                            rec = {'Food_ID': fid, 'Receiver_ID': rid, 'Status': status}
-                            if ts:
-                                rec['Timestamp'] = ts
+                            rec = {'Claim_ID': new_cid, 'Food_ID': fid, 'Receiver_ID': rid, 'Status': status,
+                                   'Timestamp': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
                             ok, msg = insert_record(conn, table_map.get('claims','claims'), rec)
                             if ok:
-                                st.success('Claim created')
+                                st.success(f'Claim created (#{new_cid})')
                             else:
                                 st.error(msg)
                             try:
@@ -1081,26 +1130,24 @@ def render_action_modal(providers, receivers, food, claims):
 
             elif entity == 'Providers':
                 if action == 'Add':
-                    pid = st.text_input('Provider_ID')
-                    name = st.text_input('Name')
-                    ptype = st.text_input('Type')
+                    new_pid = _next_numeric_id(providers, 'Provider_ID')
+                    st.caption(f'New Provider ID will be assigned automatically: #{new_pid}')
+                    name = st.text_input('Provider name')
+                    prov_types = _distinct_values(providers, 'Type')
+                    ptype = st.selectbox('Type', options=prov_types) if prov_types else st.text_input('Type')
                     addr = st.text_input('Address')
                     city = st.text_input('City')
                     contact = st.text_input('Contact')
                     submit = st.form_submit_button('Insert')
                     if submit:
-                        errs = []
-                        if not pid or not name:
-                            errs.append('Provider_ID and Name required')
-                        if errs:
-                            for e in errs:
-                                st.error(e)
+                        if not name:
+                            st.error('Provider name is required')
                         else:
                             conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
-                            rec = {'Provider_ID': pid, 'ProviderName': name, 'Type': ptype, 'Address': addr, 'City': city, 'Contact': contact}
+                            rec = {'Provider_ID': new_pid, 'Name': name, 'Type': ptype, 'Address': addr, 'City': city, 'Contact': contact}
                             ok, msg = insert_record(conn, table_map.get('providers','providers'), rec)
                             if ok:
-                                st.success('Provider added')
+                                st.success(f'Provider added (#{new_pid})')
                             else:
                                 st.error(msg)
                             try:
@@ -1128,7 +1175,7 @@ def render_action_modal(providers, receivers, food, claims):
                             pid = prov_ids[idx]
                             updates = {}
                             if new_name:
-                                updates['ProviderName'] = new_name
+                                updates['Name'] = new_name
                             if new_city:
                                 updates['City'] = new_city
                             if updates:
@@ -1175,25 +1222,23 @@ def render_action_modal(providers, receivers, food, claims):
 
             elif entity == 'Receivers':
                 if action == 'Add':
-                    rid = st.text_input('Receiver_ID')
-                    name = st.text_input('Name')
-                    rtype = st.text_input('Type')
+                    new_rid = _next_numeric_id(receivers, 'Receiver_ID')
+                    st.caption(f'New Receiver ID will be assigned automatically: #{new_rid}')
+                    name = st.text_input('Receiver name')
+                    recv_types = _distinct_values(receivers, 'Type')
+                    rtype = st.selectbox('Type', options=recv_types) if recv_types else st.text_input('Type')
                     city = st.text_input('City')
                     contact = st.text_input('Contact')
                     submit = st.form_submit_button('Insert')
                     if submit:
-                        errs = []
-                        if not rid or not name:
-                            errs.append('Receiver_ID and Name required')
-                        if errs:
-                            for e in errs:
-                                st.error(e)
+                        if not name:
+                            st.error('Receiver name is required')
                         else:
                             conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
-                            rec = {'Receiver_ID': rid, 'Name': name, 'Type': rtype, 'City': city, 'Contact': contact}
+                            rec = {'Receiver_ID': new_rid, 'Name': name, 'Type': rtype, 'City': city, 'Contact': contact}
                             ok, msg = insert_record(conn, table_map.get('receivers','receivers'), rec)
                             if ok:
-                                st.success('Receiver added')
+                                st.success(f'Receiver added (#{new_rid})')
                             else:
                                 st.error(msg)
                             try:
