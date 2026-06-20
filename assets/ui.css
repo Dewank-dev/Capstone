@@ -137,69 +137,145 @@ html, body, [class*="css"] {
 }
 
 /* =====================================================================
-   Sidebar navigation — visual sections only (presentation layer).
-   This purely re-groups the existing radio options into visual sections
-   with headers and spacing. No navigation logic, page names, keys,
-   routing or selection behaviour are changed (CSS-only).
+   Sidebar navigation — modern SaaS visual redesign (presentation only).
+   Pill buttons, icons, glassmorphism, gradient active state, section
+   headers and spacing. This is 100% CSS: no navigation logic, page
+   names, keys, routing, callbacks or selection behaviour are changed.
+   The native <input type="radio"> still drives every interaction.
 
-   DOM order of the "Navigate" radio options:
+   DOM order of the "Navigate" radio options (unchanged):
      1 Overview  2 EDA  3 Bivariate  4 Multivariate  5 Claims
      6 Providers 7 Query Outputs  8 Data  9 Actions
 
    Visual sections / order produced below:
-     📋 General         -> Overview, Actions
-     📊 Analytics       -> EDA, Bivariate, Multivariate
-     ⚙️ Operations      -> Claims, Providers, Query Outputs
-     🗄️ Data Management -> Data
+     Analytics       -> EDA, Bivariate, Multivariate
+     Operations      -> Claims, Providers, Query Outputs
+     Data Management -> Data
+     General         -> Overview, Actions
    ===================================================================== */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]{
   display:flex;
   flex-direction:column;
+  gap:8px;
 }
 
-/* Re-order options into the grouped visual order (visual only) */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1){order:1} /* Overview */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(9){order:2} /* Actions */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2){order:3} /* EDA */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(3){order:4} /* Bivariate */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(4){order:5} /* Multivariate */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5){order:6} /* Claims */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(6){order:7} /* Providers */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(7){order:8} /* Query Outputs */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8){order:9} /* Data */
+/* Re-group options into the requested visual order (visual only) */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2){order:1} /* EDA */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(3){order:2} /* Bivariate */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(4){order:3} /* Multivariate */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5){order:4} /* Claims */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(6){order:5} /* Providers */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(7){order:6} /* Query Outputs */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8){order:7} /* Data */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1){order:8} /* Overview */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(9){order:9} /* Actions */
 
-/* Let a full-width header line sit above each option's radio row */
+/* Pill-style buttons (glassmorphism surface) */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label{
+  display:flex;
   flex-wrap:wrap;
+  align-items:center;
+  margin:0;
+  padding:11px 14px;
+  border-radius:14px;
+  background:rgba(31,41,55,0.55);            /* #1F2937 glass */
+  border:1px solid rgba(255,255,255,0.06);
+  box-shadow:0 6px 18px rgba(2,6,23,0.45);
+  -webkit-backdrop-filter:blur(8px);
+  backdrop-filter:blur(8px);
+  cursor:pointer;
+  transition:background .25s ease, box-shadow .25s ease,
+             transform .18s ease, border-color .25s ease;
 }
 
-/* Section headers (rendered above the first option of each section) */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1)::before,
+/* Hide the native radio dot for a clean pill look (control still works) */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:first-child{
+  display:none !important;
+}
+
+/* Label typography */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label div[data-testid="stMarkdownContainer"] p{
+  font-family:'Poppins','Inter',sans-serif;
+  font-size:14px;
+  font-weight:600;
+  color:#F9FAFB;
+  margin:0;
+}
+
+/* Icon slot (added before each item label, on its own line section header excluded) */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:last-child{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:last-child::before{
+  font-size:16px;
+  line-height:1;
+  filter:saturate(1.1);
+}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1)>div:last-child::before{content:"🏠"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)>div:last-child::before{content:"📈"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(3)>div:last-child::before{content:"📊"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(4)>div:last-child::before{content:"🧮"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)>div:last-child::before{content:"🧾"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(6)>div:last-child::before{content:"🏢"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(7)>div:last-child::before{content:"🔎"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)>div:last-child::before{content:"🗄️"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(9)>div:last-child::before{content:"✏️"}
+
+/* Hover: surface lift + soft glow */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:hover{
+  background:#374151;
+  transform:translateY(-2px);
+  border-color:rgba(96,165,250,0.28);
+  box-shadow:0 14px 34px rgba(2,6,23,0.6), 0 0 0 1px rgba(96,165,250,0.18);
+}
+
+/* Active (selected) item: orange -> purple gradient + soft glow */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:has(input:checked){
+  background:linear-gradient(135deg,#F97316,#8B5CF6);
+  border-color:transparent;
+  box-shadow:0 12px 32px rgba(249,115,22,0.38),
+             0 8px 28px rgba(139,92,246,0.38),
+             0 0 0 1px rgba(255,255,255,0.10);
+}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:has(input:checked) div[data-testid="stMarkdownContainer"] p{
+  color:#0B1020;
+  font-weight:800;
+}
+
+/* Section headers (full-width line above the first option of each section) */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)::before,
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)::before,
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)::before{
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)::before,
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1)::before{
   flex:0 0 100%;
   width:100%;
   display:block;
-  font-family:'Poppins',sans-serif;
+  font-family:'Poppins','Inter',sans-serif;
   font-size:11px;
   font-weight:700;
-  letter-spacing:.08em;
+  letter-spacing:.10em;
   text-transform:uppercase;
   color:var(--text-muted);
-  padding:4px 2px 6px;
-  margin-bottom:6px;
-  border-bottom:1px solid rgba(255,255,255,0.06);
+  padding:0 2px 8px;
+  margin-bottom:10px;
+  border-bottom:1px solid rgba(255,255,255,0.08);
 }
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1)::before{content:"📋  General"}
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)::before{content:"📊  Analytics"}
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)::before{content:"⚙️  Operations"}
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)::before{content:"🗄️  Data Management"}
+/* Keep the header readable even on the active pill */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:has(input:checked)::before{
+  color:rgba(11,16,32,0.85);
+  border-bottom-color:rgba(11,16,32,0.25);
+}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)::before{content:"Analytics"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)::before{content:"Operations"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)::before{content:"Data Management"}
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1)::before{content:"General"}
 
-/* Spacing above each new section (every section except the first) */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2),
+/* Extra spacing above each new section (every section except the first) */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5),
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8){
-  margin-top:18px;
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8),
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1){
+  margin-top:16px;
 }
 
