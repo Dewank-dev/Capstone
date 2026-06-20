@@ -1,25 +1,24 @@
 import streamlit as st
 
 from utils import (
-    load_data,
     get_filters,
     filter_data,
     compute_kpis,
-    load_providers,
-    load_receivers,
-    load_food_listings,
-    load_claims,
+    load_providers_from_df,
+    load_receivers_from_df,
+    load_food_listings_from_df,
+    load_claims_from_df,
     merge_datasets,
     aggregate_by_city,
-    provider_contributions,
     get_db_connection,
     load_all_from_db,
     write_df_to_table,
     insert_record,
     update_record,
     delete_record,
+    table_has_rows,
 )
-from charts import plot_bar, plot_histogram, plot_pie
+from charts import plot_bar, plot_pie
 import os
 import pandas as pd
 
@@ -65,14 +64,7 @@ hero_html = '''
 '''
 st.markdown(hero_html, unsafe_allow_html=True)
 
-# Internal DB connection (Docker defaults)
-# MySQL container started with: sudo docker run --name mysql-container -e MYSQL_ROOT_PASSWORD=pass -p 3306:3306 -d mysql:latest
-# Database: abc, user: root, password: pass
-db_host = 'db'
-db_port = 3306
-db_user = 'root'
-db_password = 'pass'
-db_database = 'abc'
+db_path = os.environ.get('SQLITE_DB_PATH', os.path.join('data', 'food_donation.db'))
 table_map = {'providers':'providers','receivers':'receivers','food':'food_listings','claims':'claims'}
 
 # Attempt to load from DB automatically
@@ -81,28 +73,33 @@ providers = None
 receivers = None
 claims = None
 food = None
-conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+conn = get_db_connection(db_path=db_path)
 if conn is None:
-    st.error('Failed to connect to MySQL at {host}:{port}. Check credentials and database name.'.format(host=db_host, port=db_port))
+    st.error(f'Failed to open SQLite database at {db_path}.')
     st.stop()
 try:
-    # use internal table_map defaults
-    try:
-        table_map = table_map
-    except Exception:
-        table_map = {'providers':'providers','receivers':'receivers','food':'food_listings','claims':'claims'}
-    # Load CSVs from local data/ and push into DB (truncate existing tables)
+    # Seed SQLite from bundled CSV files only when a table is empty.
     local_map = {'providers': 'providers.csv', 'receivers': 'receivers.csv', 'food': 'food_listings.csv', 'claims': 'claims.csv'}
     for key, fname in local_map.items():
         path = os.path.join('data', fname)
         table_name = table_map.get(key, key)
+        if table_has_rows(conn, table_name):
+            continue
         if os.path.exists(path):
             try:
                 df_src = pd.read_csv(path)
             except Exception as e:
                 st.warning(f'Unable to read {path}: {e}')
                 continue
-            ok, msg = write_df_to_table(conn, df_src, table_name, truncate=True)
+            if key == 'providers':
+                df_src = load_providers_from_df(df_src)
+            elif key == 'receivers':
+                df_src = load_receivers_from_df(df_src)
+            elif key == 'food':
+                df_src = load_food_listings_from_df(df_src)
+            elif key == 'claims':
+                df_src = load_claims_from_df(df_src)
+            ok, msg = write_df_to_table(conn, df_src, table_name, truncate=False)
             if not ok:
                 st.warning(f'Failed to write {path} into table {table_name}: {msg}')
 
@@ -117,6 +114,10 @@ if food is None:
     st.error('No food listings table found or table is empty after loading CSVs. Check your data files and database schema.')
     st.stop()
 df = merge_datasets(providers=providers, receivers=receivers, food=food, claims=claims)
+
+crud_feedback = st.session_state.pop('crud_feedback', None)
+if crud_feedback:
+    st.success(crud_feedback)
 
 
 def find_col(df, variants):
@@ -173,7 +174,7 @@ def render_add_section():
                         for e in errors:
                             st.error(e)
                     else:
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
@@ -186,7 +187,7 @@ def render_add_section():
                                 rec['Meal_Type'] = f_meal_type
                             ok, msg = insert_record(conn, table_map.get('food','food_listings'), rec)
                             if ok:
-                                st.success('Inserted donation')
+                                refresh_after_crud('Inserted donation')
                             else:
                                 st.error(f'Insert failed: {msg}')
                             try:
@@ -234,7 +235,7 @@ def render_add_section():
                         for e in errors:
                             st.error(e)
                     else:
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
@@ -243,7 +244,7 @@ def render_add_section():
                                 rec['Timestamp'] = c_timestamp
                             ok, msg = insert_record(conn, table_map.get('claims','claims'), rec)
                             if ok:
-                                st.success('Claim created')
+                                refresh_after_crud('Claim created')
                             else:
                                 st.error(f'Create failed: {msg}')
                             try:
@@ -278,14 +279,14 @@ def render_add_section():
                         for e in errs:
                             st.error(e)
                     else:
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             rec = {'Provider_ID': pid, 'ProviderName': name, 'Type': ptype, 'Address': addr, 'City': city, 'Contact': contact}
                             ok, msg = insert_record(conn, table_map.get('providers','providers'), rec)
                             if ok:
-                                st.success('Provider added')
+                                refresh_after_crud('Provider added')
                             else:
                                 st.error(f'Insert failed: {msg}')
                             try:
@@ -317,14 +318,14 @@ def render_add_section():
                         for e in errs:
                             st.error(e)
                     else:
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             rec = {'Receiver_ID': rid, 'Name': rname, 'Type': rtype, 'City': rcity, 'Contact': rcontact}
                             ok, msg = insert_record(conn, table_map.get('receivers','receivers'), rec)
                             if ok:
-                                st.success('Receiver added')
+                                refresh_after_crud('Receiver added')
                             else:
                                 st.error(f'Insert failed: {msg}')
                             try:
@@ -369,13 +370,13 @@ def render_update_section():
                         if not updates:
                             st.error('No updates provided')
                         else:
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             if conn is None:
                                 st.error('DB connection failed')
                             else:
                                 ok, msg = update_record(conn, table_map.get('food','food_listings'), 'Food_ID', sel_id, updates)
                                 if ok:
-                                    st.success('Donation updated')
+                                    refresh_after_crud('Donation updated')
                                 else:
                                     st.error(f'Update failed: {msg}')
                                 try:
@@ -403,13 +404,13 @@ def render_update_section():
                     else:
                         idx = claim_opts.index(selc)
                         claim_id = claim_ids[idx]
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             ok, msg = update_record(conn, table_map.get('claims','claims'), 'Claim_ID', claim_id, {'Status': new_status})
                             if ok:
-                                st.success('Updated')
+                                refresh_after_crud('Claim updated')
                             else:
                                 st.error(f'Update failed: {msg}')
                             try:
@@ -444,13 +445,13 @@ def render_update_section():
                     if not updates:
                         st.error('No updates provided')
                     else:
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             ok, msg = update_record(conn, table_map.get('providers','providers'), 'Provider_ID', sel_id, updates)
                             if ok:
-                                st.success('Provider updated')
+                                refresh_after_crud('Provider updated')
                             else:
                                 st.error(f'Update failed: {msg}')
                             try:
@@ -483,13 +484,13 @@ def render_update_section():
                     if not updates:
                         st.error('No updates provided')
                     else:
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             ok, msg = update_record(conn, table_map.get('receivers','receivers'), 'Receiver_ID', sel_id, updates)
                             if ok:
-                                st.success('Receiver updated')
+                                refresh_after_crud('Receiver updated')
                             else:
                                 st.error(f'Update failed: {msg}')
                             try:
@@ -519,13 +520,13 @@ def render_delete_section():
                     else:
                         idx = food_opts.index(self)
                         sel_id = food_ids[idx]
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             ok, msg = delete_record(conn, table_map.get('food','food_listings'), 'Food_ID', sel_id)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Donation deleted')
                             else:
                                 st.error(f'Delete failed: {msg}')
                             try:
@@ -551,13 +552,13 @@ def render_delete_section():
                     else:
                         idx = claim_opts.index(selc)
                         cid = claim_ids[idx]
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             ok, msg = delete_record(conn, table_map.get('claims','claims'), 'Claim_ID', cid)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Claim deleted')
                             else:
                                 st.error(f'Delete failed: {msg}')
                             try:
@@ -582,13 +583,13 @@ def render_delete_section():
                     else:
                         idx = prov_opts.index(selp)
                         pid = prov_ids[idx]
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             ok, msg = delete_record(conn, table_map.get('providers','providers'), 'Provider_ID', pid)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Provider deleted')
                             else:
                                 st.error(f'Delete failed: {msg}')
                             try:
@@ -612,13 +613,13 @@ def render_delete_section():
                     else:
                         idx = recv_opts.index(selr)
                         rid = recv_ids[idx]
-                        conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                        conn = get_db_connection(db_path=db_path)
                         if conn is None:
                             st.error('DB connection failed')
                         else:
                             ok, msg = delete_record(conn, table_map.get('receivers','receivers'), 'Receiver_ID', rid)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Receiver deleted')
                             else:
                                 st.error(f'Delete failed: {msg}')
                             try:
@@ -728,13 +729,14 @@ def render_overview(df, filtered):
 
 def render_eda(filtered, providers, receivers):
     st.subheader('Univariate Distributions')
-    provider_type_col = find_col(filtered, ['Provider_Type', 'ProviderType', 'Type', 'provider_type'])
+    provider_type_source = providers if providers is not None else filtered
+    provider_type_col = find_col(provider_type_source, ['Provider_Type', 'ProviderType', 'Type', 'provider_type'])
     food_type_col = find_col(filtered, ['Food_Type', 'FoodType', 'Food Type'])
     meal_type_col = find_col(filtered, ['Meal_Type', 'MealType', 'Meal Type'])
 
     c1, c2 = st.columns(2)
     if provider_type_col:
-        c1.plotly_chart(plot_bar(filtered, groupby=provider_type_col), use_container_width=True)
+        c1.plotly_chart(plot_bar(provider_type_source, groupby=provider_type_col), use_container_width=True)
     else:
         c1.info('No provider type column available')
     if food_type_col:
@@ -743,17 +745,40 @@ def render_eda(filtered, providers, receivers):
         c2.info('No food type column available')
 
 
-def render_bivariate(filtered):
+def render_bivariate(filtered, providers):
     st.subheader('Bivariate Analyses')
+    c1, c2 = st.columns(2)
     city_count = filtered.groupby('City').size().reset_index(name='listings').sort_values('listings', ascending=False)
-    st.plotly_chart(plot_bar(city_count, groupby='City', value_col='listings'), use_container_width=True)
+    c1.plotly_chart(plot_bar(city_count, groupby='City', value_col='listings'), use_container_width=True)
+    if providers is not None and 'City' in providers.columns:
+        provider_city_count = providers.groupby('City').size().reset_index(name='providers').sort_values('providers', ascending=False)
+        c2.plotly_chart(plot_bar(provider_city_count, groupby='City', value_col='providers'), use_container_width=True)
+    else:
+        c2.info('Provider city data is not available')
 
 
-def render_multivariate(filtered):
+def render_multivariate(filtered, providers):
     st.subheader('Multivariate (Treemap)')
+    import plotly.express as px
+
+    if providers is not None and {'City', 'Type'}.issubset(providers.columns):
+        provider_tree = providers[['City', 'Type']].copy()
+        provider_tree['City'] = provider_tree['City'].fillna('Unknown')
+        provider_tree['Type'] = provider_tree['Type'].fillna('Unknown')
+        provider_tree['ProviderCount'] = 1
+        provider_agg = provider_tree.groupby(['City', 'Type'], dropna=False)['ProviderCount'].sum().reset_index()
+        fig = px.treemap(
+            provider_agg,
+            path=['City', 'Type'],
+            values='ProviderCount',
+            title='Provider Count by City / Provider Type',
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info('Provider city/type data is not available')
+
     prov_type_col = find_col(filtered, ['Provider_Type', 'ProviderType'])
     if 'City' in filtered.columns and prov_type_col and 'Quantity' in filtered.columns:
-        import plotly.express as px
         treemap_df = filtered.copy()
         treemap_df['ProviderType'] = treemap_df[prov_type_col]
         treemap_agg = treemap_df.groupby(['City', 'ProviderType'])['Quantity'].sum().reset_index()
@@ -880,6 +905,14 @@ def close_modal():
     st.session_state['modal_action'] = None
 
 
+def refresh_after_crud(message):
+    st.session_state['crud_feedback'] = message
+    close_modal()
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.rerun()
+
+
 def _next_numeric_id(df, col):
     """Suggest the next integer ID for a table (max existing + 1)."""
     try:
@@ -950,8 +983,8 @@ def render_action_modal(providers, receivers, food, claims):
                                 st.error(e)
                         else:
                             pid = prov_ids[prov_labels.index(prov_choice)]
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
-                            rec = {'Food_ID': new_fid, 'Food_Name': fname, 'Provider_ID': pid, 'Quantity': qty, 'Location': city}
+                            conn = get_db_connection(db_path=db_path)
+                            rec = {'Food_ID': new_fid, 'Food_Name': fname, 'Provider_ID': pid, 'Quantity': qty, 'City': city}
                             if ftype:
                                 rec['Food_Type'] = ftype
                             if mtype:
@@ -960,14 +993,13 @@ def render_action_modal(providers, receivers, food, claims):
                                 rec['Expiry_Date'] = str(expiry)
                             ok, msg = insert_record(conn, table_map.get('food','food_listings'), rec)
                             if ok:
-                                st.success(f'Food listing added (#{new_fid})')
+                                refresh_after_crud(f'Food listing added (#{new_fid})')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
                 elif action == 'Update':
                     food_opts = []
@@ -993,10 +1025,10 @@ def render_action_modal(providers, receivers, food, claims):
                             if new_qty and new_qty > 0:
                                 updates['Quantity'] = new_qty
                             if updates:
-                                conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                                conn = get_db_connection(db_path=db_path)
                                 ok, msg = update_record(conn, table_map.get('food','food_listings'), 'Food_ID', fid, updates)
                                 if ok:
-                                    st.success('Updated')
+                                    refresh_after_crud('Food listing updated')
                                 else:
                                     st.error(msg)
                                 try:
@@ -1005,7 +1037,6 @@ def render_action_modal(providers, receivers, food, claims):
                                     pass
                             else:
                                 st.error('No updates provided')
-                            close_modal()
 
                 else:  # Delete
                     food_opts = []
@@ -1023,17 +1054,16 @@ def render_action_modal(providers, receivers, food, claims):
                         else:
                             idx = food_opts.index(sel)
                             fid = food_ids[idx]
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             ok, msg = delete_record(conn, table_map.get('food','food_listings'), 'Food_ID', fid)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Food listing deleted')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
             elif entity == 'Claims':
                 if action == 'Add':
@@ -1057,19 +1087,18 @@ def render_action_modal(providers, receivers, food, claims):
                         else:
                             fid = food_ids[food_labels.index(food_choice)]
                             rid = recv_ids[recv_labels.index(recv_choice)]
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             rec = {'Claim_ID': new_cid, 'Food_ID': fid, 'Receiver_ID': rid, 'Status': status,
                                    'Timestamp': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
                             ok, msg = insert_record(conn, table_map.get('claims','claims'), rec)
                             if ok:
-                                st.success(f'Claim created (#{new_cid})')
+                                refresh_after_crud(f'Claim created (#{new_cid})')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
                 elif action == 'Update':
                     claim_opts = []
@@ -1088,17 +1117,16 @@ def render_action_modal(providers, receivers, food, claims):
                         else:
                             idx = claim_opts.index(sel)
                             cid = claim_ids[idx]
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             ok, msg = update_record(conn, table_map.get('claims','claims'), 'Claim_ID', cid, {'Status': new_status})
                             if ok:
-                                st.success('Updated')
+                                refresh_after_crud('Claim updated')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
                 else:  # Delete
                     claim_opts = []
@@ -1116,17 +1144,16 @@ def render_action_modal(providers, receivers, food, claims):
                         else:
                             idx = claim_opts.index(sel)
                             cid = claim_ids[idx]
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             ok, msg = delete_record(conn, table_map.get('claims','claims'), 'Claim_ID', cid)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Claim deleted')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
             elif entity == 'Providers':
                 if action == 'Add':
@@ -1143,18 +1170,17 @@ def render_action_modal(providers, receivers, food, claims):
                         if not name:
                             st.error('Provider name is required')
                         else:
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
-                            rec = {'Provider_ID': new_pid, 'Name': name, 'Type': ptype, 'Address': addr, 'City': city, 'Contact': contact}
+                            conn = get_db_connection(db_path=db_path)
+                            rec = {'Provider_ID': new_pid, 'ProviderName': name, 'Type': ptype, 'Address': addr, 'City': city, 'Contact': contact}
                             ok, msg = insert_record(conn, table_map.get('providers','providers'), rec)
                             if ok:
-                                st.success(f'Provider added (#{new_pid})')
+                                refresh_after_crud(f'Provider added (#{new_pid})')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
                 elif action == 'Update':
                     prov_opts = []
@@ -1175,14 +1201,14 @@ def render_action_modal(providers, receivers, food, claims):
                             pid = prov_ids[idx]
                             updates = {}
                             if new_name:
-                                updates['Name'] = new_name
+                                updates['ProviderName'] = new_name
                             if new_city:
                                 updates['City'] = new_city
                             if updates:
-                                conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                                conn = get_db_connection(db_path=db_path)
                                 ok, msg = update_record(conn, table_map.get('providers','providers'), 'Provider_ID', pid, updates)
                                 if ok:
-                                    st.success('Updated')
+                                    refresh_after_crud('Provider updated')
                                 else:
                                     st.error(msg)
                                 try:
@@ -1191,7 +1217,6 @@ def render_action_modal(providers, receivers, food, claims):
                                     pass
                             else:
                                 st.error('No updates provided')
-                            close_modal()
 
                 else:  # Delete
                     prov_opts = []
@@ -1208,17 +1233,16 @@ def render_action_modal(providers, receivers, food, claims):
                         else:
                             idx = prov_opts.index(sel)
                             pid = prov_ids[idx]
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             ok, msg = delete_record(conn, table_map.get('providers','providers'), 'Provider_ID', pid)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Provider deleted')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
             elif entity == 'Receivers':
                 if action == 'Add':
@@ -1234,18 +1258,17 @@ def render_action_modal(providers, receivers, food, claims):
                         if not name:
                             st.error('Receiver name is required')
                         else:
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             rec = {'Receiver_ID': new_rid, 'Name': name, 'Type': rtype, 'City': city, 'Contact': contact}
                             ok, msg = insert_record(conn, table_map.get('receivers','receivers'), rec)
                             if ok:
-                                st.success(f'Receiver added (#{new_rid})')
+                                refresh_after_crud(f'Receiver added (#{new_rid})')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
                 elif action == 'Update':
                     recv_opts = []
@@ -1270,10 +1293,10 @@ def render_action_modal(providers, receivers, food, claims):
                             if new_city:
                                 updates['City'] = new_city
                             if updates:
-                                conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                                conn = get_db_connection(db_path=db_path)
                                 ok, msg = update_record(conn, table_map.get('receivers','receivers'), 'Receiver_ID', rid, updates)
                                 if ok:
-                                    st.success('Updated')
+                                    refresh_after_crud('Receiver updated')
                                 else:
                                     st.error(msg)
                                 try:
@@ -1282,7 +1305,6 @@ def render_action_modal(providers, receivers, food, claims):
                                     pass
                             else:
                                 st.error('No updates provided')
-                            close_modal()
 
                 else:  # Delete
                     recv_opts = []
@@ -1299,17 +1321,16 @@ def render_action_modal(providers, receivers, food, claims):
                         else:
                             idx = recv_opts.index(sel)
                             rid = recv_ids[idx]
-                            conn = get_db_connection(host=db_host, port=int(db_port), user=db_user, password=db_password, database=db_database)
+                            conn = get_db_connection(db_path=db_path)
                             ok, msg = delete_record(conn, table_map.get('receivers','receivers'), 'Receiver_ID', rid)
                             if ok:
-                                st.success('Deleted')
+                                refresh_after_crud('Receiver deleted')
                             else:
                                 st.error(msg)
                             try:
                                 conn.close()
                             except Exception:
                                 pass
-                            close_modal()
 
 
 # Page router
@@ -1318,9 +1339,9 @@ if page == 'Overview':
 elif page == 'EDA':
     render_eda(filtered, providers, receivers)
 elif page == 'Bivariate':
-    render_bivariate(filtered)
+    render_bivariate(filtered, providers)
 elif page == 'Multivariate':
-    render_multivariate(filtered)
+    render_multivariate(filtered, providers)
 elif page == 'Claims':
     render_claims(filtered)
 elif page == 'Providers':

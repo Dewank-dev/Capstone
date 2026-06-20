@@ -1,6 +1,6 @@
 import pandas as pd
-import mysql.connector
-from mysql.connector import Error
+import os
+import sqlite3
 
 
 def load_data(file_like):
@@ -38,21 +38,16 @@ def load_providers(file_like):
     return df
 
 
-def get_db_connection(host='localhost', port=3306, user='root', password='', database=None):
-    """Return a mysql.connector connection. Caller should handle closing.
-
-    Defaults assume a local MySQL on port 3306. Set `database` to select a schema.
-    """
+def get_db_connection(db_path=None, **_ignored):
+    """Return a SQLite connection. Caller should handle closing."""
+    db_path = db_path or os.environ.get('SQLITE_DB_PATH', os.path.join('data', 'food_donation.db'))
     try:
-        conn = mysql.connector.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-        )
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        conn = sqlite3.connect(db_path, check_same_thread=False)
         return conn
-    except Error:
+    except sqlite3.Error:
         return None
 
 
@@ -144,11 +139,10 @@ def load_all_from_db(conn, table_map=None):
 
 
 def write_df_to_table(conn, df, table_name, truncate=True):
-    """Write a pandas DataFrame to an existing MySQL table using mysql.connector.
+    """Write a pandas DataFrame to an existing SQLite table.
 
-    This function will `TRUNCATE` the table first if `truncate=True`.
-    It expects the table schema to already exist and the DataFrame column names
-    to match the table column names.
+    This function will clear the table first if `truncate=True`.
+    If the table does not exist, it is created from the DataFrame columns.
     Returns True on success, False on failure.
     """
     if df is None or df.empty:
@@ -172,15 +166,15 @@ def write_df_to_table(conn, df, table_name, truncate=True):
                 pass
             cursor = conn.cursor()
         if truncate:
-            cursor.execute(f"TRUNCATE TABLE `{table_name}`")
+            cursor.execute(f"DELETE FROM `{table_name}`")
         cols = list(df.columns)
         col_names = ",".join([f"`{c}`" for c in cols])
-        placeholders = ",".join(["%s"] * len(cols))
+        placeholders = ",".join(["?"] * len(cols))
         sql = f"INSERT INTO `{table_name}` ({col_names}) VALUES ({placeholders})"
         values = []
         for row in df[cols].itertuples(index=False, name=None):
             # convert numpy types and NaN
-            cleaned = tuple(None if (pd.isna(x)) else x for x in row)
+            cleaned = tuple(None if (pd.isna(x)) else _to_sqlite_value(x) for x in row)
             values.append(cleaned)
         if values:
             cursor.executemany(sql, values)
@@ -206,9 +200,9 @@ def insert_record(conn, table_name, record):
         return False, 'empty record'
     cols = list(record.keys())
     col_names = ",".join([f"`{c}`" for c in cols])
-    placeholders = ",".join(["%s"] * len(cols))
+    placeholders = ",".join(["?"] * len(cols))
     sql = f"INSERT INTO `{table_name}` ({col_names}) VALUES ({placeholders})"
-    vals = [record[c] for c in cols]
+    vals = [_to_sqlite_value(record[c]) for c in cols]
     cur = conn.cursor()
     try:
         cur.execute(sql, tuple(vals))
@@ -231,9 +225,9 @@ def update_record(conn, table_name, pk_col, pk_value, updates):
     """Update a record by primary key column. `updates` is a dict of column->value."""
     if not updates:
         return False, 'no updates'
-    set_clause = ",".join([f"`{k}`=%s" for k in updates.keys()])
-    sql = f"UPDATE `{table_name}` SET {set_clause} WHERE `{pk_col}`=%s"
-    vals = list(updates.values()) + [pk_value]
+    set_clause = ",".join([f"`{k}`=?" for k in updates.keys()])
+    sql = f"UPDATE `{table_name}` SET {set_clause} WHERE `{pk_col}`=?"
+    vals = [_to_sqlite_value(v) for v in updates.values()] + [_to_sqlite_value(pk_value)]
     cur = conn.cursor()
     try:
         cur.execute(sql, tuple(vals))
@@ -254,7 +248,7 @@ def update_record(conn, table_name, pk_col, pk_value, updates):
 
 def delete_record(conn, table_name, pk_col, pk_value):
     """Delete a record by primary key column."""
-    sql = f"DELETE FROM `{table_name}` WHERE `{pk_col}`=%s"
+    sql = f"DELETE FROM `{table_name}` WHERE `{pk_col}`=?"
     cur = conn.cursor()
     try:
         cur.execute(sql, (pk_value,))
@@ -275,19 +269,19 @@ def delete_record(conn, table_name, pk_col, pk_value):
 
 def _sql_type_for_series(s):
     if pd.api.types.is_integer_dtype(s):
-        return 'INT'
+        return 'INTEGER'
     if pd.api.types.is_float_dtype(s):
-        return 'DOUBLE'
+        return 'REAL'
     if pd.api.types.is_bool_dtype(s):
-        return 'BOOLEAN'
+        return 'INTEGER'
     if pd.api.types.is_datetime64_any_dtype(s):
-        return 'DATETIME'
+        return 'TEXT'
     # default to TEXT for strings/mixed
     return 'TEXT'
 
 
 def _create_table_from_df(conn, table_name, df):
-    """Create a simple table schema in MySQL based on a pandas DataFrame.
+    """Create a simple table schema in SQLite based on a pandas DataFrame.
 
     Column types are guessed conservatively. Returns True on success.
     """
@@ -306,7 +300,7 @@ def _create_table_from_df(conn, table_name, df):
             pk = str(col)
             break
     pk_sql = f", PRIMARY KEY (`{pk}`)" if pk is not None else ''
-    create_sql = f"CREATE TABLE `{table_name}` ({', '.join(cols)}{pk_sql}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    create_sql = f"CREATE TABLE `{table_name}` ({', '.join(cols)}{pk_sql})"
     cur = conn.cursor()
     try:
         cur.execute(create_sql)
@@ -317,6 +311,34 @@ def _create_table_from_df(conn, table_name, df):
             conn.rollback()
         except Exception:
             pass
+        return False
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+
+def _to_sqlite_value(value):
+    if pd.isna(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat(sep=' ')
+    if hasattr(value, 'item'):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return value
+
+
+def table_has_rows(conn, table_name):
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM `{table_name}`")
+        count = cur.fetchone()[0]
+        return count > 0
+    except Exception:
         return False
     finally:
         try:
