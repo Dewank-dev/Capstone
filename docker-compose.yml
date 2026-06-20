@@ -6,6 +6,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: pass
       MYSQL_DATABASE: abc
+    networks: 
+    - food-network
     ports:
       - "3306:3306"
     volumes:
@@ -26,6 +28,10 @@ services:
       - db
     volumes:
       - ./:/app:cached
+    networks: 
+    - food-network
 
 volumes:
   db-data:
+networks:
+  food-network:

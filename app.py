@@ -68,7 +68,7 @@ st.markdown(hero_html, unsafe_allow_html=True)
 # Internal DB connection (Docker defaults)
 # MySQL container started with: sudo docker run --name mysql-container -e MYSQL_ROOT_PASSWORD=pass -p 3306:3306 -d mysql:latest
 # Database: abc, user: root, password: pass
-db_host = 'localhost'
+db_host = 'db'
 db_port = 3306
 db_user = 'root'
 db_password = 'pass'
