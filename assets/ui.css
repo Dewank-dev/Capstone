@@ -170,12 +170,32 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(1){order:8} /* Overview */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(9){order:9} /* Actions */
 
-/* Pill-style buttons (glassmorphism surface) */
+/* Each label is a transparent wrapper; the PILL is the inner text block.
+   This keeps the section header (label::before) OUTSIDE the pill, so it
+   reads as a divider above the whole group rather than the first item. */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   margin:0;
+  padding:0;
+  background:transparent;
+  border:none;
+  box-shadow:none;
+  cursor:pointer;
+}
+
+/* Hide the native radio dot for a clean pill look (control still works) */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:first-child{
+  display:none !important;
+}
+
+/* Pill-style button (glassmorphism surface) — the item's text/icon block */
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:last-child{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  width:100%;
   padding:11px 14px;
   border-radius:14px;
   background:rgba(31,41,55,0.55);            /* #1F2937 glass */
@@ -183,14 +203,8 @@ html, body, [class*="css"] {
   box-shadow:0 6px 18px rgba(2,6,23,0.45);
   -webkit-backdrop-filter:blur(8px);
   backdrop-filter:blur(8px);
-  cursor:pointer;
   transition:background .25s ease, box-shadow .25s ease,
              transform .18s ease, border-color .25s ease;
-}
-
-/* Hide the native radio dot for a clean pill look (control still works) */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:first-child{
-  display:none !important;
 }
 
 /* Label typography */
@@ -202,12 +216,7 @@ html, body, [class*="css"] {
   margin:0;
 }
 
-/* Icon slot (added before each item label, on its own line section header excluded) */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:last-child{
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
+/* Per-item icons (rendered inside the pill, before the label text) */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label>div:last-child::before{
   font-size:16px;
   line-height:1;
@@ -224,7 +233,7 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(9)>div:last-child::before{content:"✏️"}
 
 /* Hover: surface lift + soft glow */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:hover{
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:hover>div:last-child{
   background:#374151;
   transform:translateY(-2px);
   border-color:rgba(96,165,250,0.28);
@@ -232,7 +241,7 @@ html, body, [class*="css"] {
 }
 
 /* Active (selected) item: orange -> purple gradient + soft glow */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:has(input:checked){
+[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:has(input:checked)>div:last-child{
   background:linear-gradient(135deg,#F97316,#8B5CF6);
   border-color:transparent;
   box-shadow:0 12px 32px rgba(249,115,22,0.38),
@@ -244,7 +253,8 @@ html, body, [class*="css"] {
   font-weight:800;
 }
 
-/* Section headers (full-width line above the first option of each section) */
+/* Section headers: standalone divider line ABOVE the group's first item
+   (transparent label means no pill background sits behind the header) */
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)::before,
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)::before,
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(8)::before,
@@ -258,14 +268,9 @@ html, body, [class*="css"] {
   letter-spacing:.10em;
   text-transform:uppercase;
   color:var(--text-muted);
-  padding:0 2px 8px;
+  padding:0 4px 8px;
   margin-bottom:10px;
   border-bottom:1px solid rgba(255,255,255,0.08);
-}
-/* Keep the header readable even on the active pill */
-[data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:has(input:checked)::before{
-  color:rgba(11,16,32,0.85);
-  border-bottom-color:rgba(11,16,32,0.25);
 }
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(2)::before{content:"Analytics"}
 [data-testid="stSidebar"] div[role="radiogroup"][aria-label="Navigate"]>label:nth-of-type(5)::before{content:"Operations"}
