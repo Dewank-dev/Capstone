@@ -24,7 +24,23 @@ import pandas as pd
 
 
 st.set_page_config(layout="wide", page_title="Food Donation Dashboard")
+st.markdown("""
+<style>
+button[kind="header"] {
+    display: none !important;
+}
 
+/* Optional: hide full header */
+header[data-testid="stHeader"] {
+    display: none !important;
+}
+
+/* Optional: remove top spacing */
+[data-testid="stAppViewContainer"] {
+    margin-top: -2rem;
+}
+</style>
+""", unsafe_allow_html=True)
 # Load custom UI stylesheet (glassmorphism + eco-theme)
 css_path = os.path.join('assets', 'ui.css')
 if os.path.exists(css_path):
